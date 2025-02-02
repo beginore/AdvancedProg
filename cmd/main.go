@@ -14,7 +14,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":4000", "http service address")
-	dsn := "./forum.db"
+	dsn := ""
 	flag.Parse()
 
 	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
@@ -29,7 +29,7 @@ func main() {
 
 }
 func openDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, err
 	}

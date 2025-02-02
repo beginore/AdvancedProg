@@ -7,7 +7,7 @@ import (
 
 // Функция для инициализации базы данных (создание таблиц и т.д.)
 func InitDB(db *sql.DB) error {
-	createTablePosts := `
+	createTablePosts := `	
 	CREATE TABLE IF NOT EXISTS posts (
 		id SERIAL PRIMARY KEY,
 		title VARCHAR(255) NOT NULL,
