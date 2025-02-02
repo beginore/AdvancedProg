@@ -1,40 +1,42 @@
 package main
 
 import (
-	"crypto/tls"
-	"database/sql"
-	"flag"
+	"fmt"
+	"forum/config"
 	"forum/internal/models"
+	"forum/internal/models/postgresql"
 	_ "github.com/lib/pq"
 	"log"
-	"net/http"
-	"os"
-	"time"
 )
 
 func main() {
-	addr := flag.String("addr", ":4000", "http service address")
-	dsn := ""
-	flag.Parse()
+	// Loads env variables
+	config.LoadConfig()
 
-	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
-	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
-
-	// Открытие базы данных
-	db, err := openDB(dsn)
+	// Connect to PostgreSQL
+	db, err := postgresql.OpenDB()
 	if err != nil {
-		errorLog.Fatal(err)
+		log.Fatalf("Database connection failed: %v", err)
 	}
-	defer db.Close()
 
-}
-func openDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", dsn)
+	// AutoMigrate (Ensures tables exist)
+	err = db.AutoMigrate(&models.User{}, &models.Post{}, &models.Feedback{})
 	if err != nil {
-		return nil, err
+		log.Fatalf("Migration failed: %v", err)
 	}
-	if err = db.Ping(); err != nil {
-		return nil, err
+
+	// Creating a new user
+	user := models.User{
+		Username:     "John",
+		Email:        "john@gmail.com",
+		PasswordHash: "qwer",
 	}
-	return db, nil
+
+	userCrud := &postgresql.UserModel{Db: db}
+	err = userCrud.CreateUser(&user)
+	if err != nil {
+		log.Fatalf("Failed to create post: %v", err)
+	}
+
+	fmt.Printf("✅ User created successfully: %+v\n", user)
 }
