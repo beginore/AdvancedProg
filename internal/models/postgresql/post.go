@@ -13,6 +13,12 @@ func (m *PostModel) CreatePost(post *models.Post) error {
 	return m.Db.Create(post).Error
 }
 
+func (m *PostModel) GetAllPosts() ([]models.Post, error) {
+	var posts []models.Post
+	err := m.Db.Find(&posts).Error
+	return posts, err
+}
+
 // GetPostByID retrieves a post by ID
 func (m *PostModel) GetPostByID(postID uint) (*models.Post, error) {
 	var post models.Post
