@@ -1,1 +1,0 @@
-For database connection set .env variables!
