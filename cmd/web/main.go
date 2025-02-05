@@ -21,11 +21,13 @@ type application struct {
 	posts              *models.PostModel
 	users              *models.UserModel
 	comments           *models.CommentModel
+	categories         *models.CategoryModel
 	reactions          *models.ReactionModel
 	notificationsModel *models.NotificationModel
 	templateCache      map[string]*template.Template
 	sessions           map[string]int
 	mu                 sync.Mutex
+	reports            *models.ReportModel
 }
 
 func main() {
@@ -58,10 +60,12 @@ func main() {
 		posts:              &models.PostModel{DB: db},
 		users:              &models.UserModel{DB: db},
 		comments:           &models.CommentModel{DB: db},
+		categories:         &models.CategoryModel{DB: db},
 		notificationsModel: &models.NotificationModel{DB: db},
 		reactions:          &models.ReactionModel{DB: db},
 		templateCache:      templateCache,
 		sessions:           make(map[string]int),
+		reports:            &models.ReportModel{DB: db}, // Добавляем поле reports корректно
 	}
 
 	tlsConfig := &tls.Config{

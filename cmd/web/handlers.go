@@ -23,6 +23,7 @@ type postCreateForm struct {
 	Author    string
 	AuthorID  int
 	validator.Validator
+	Status string
 }
 type editPost struct {
 	ID        int
@@ -61,6 +62,26 @@ type userLoginForm struct {
 	validator.Validator `form:"-"`
 }
 
+func (app *application) manageUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		app.methodNotAllowed(w)
+		return
+	}
+	if r.URL.Path != "/admin/users" {
+		http.NotFound(w, r)
+		return
+	}
+	users, err := app.users.GetPendingModerators()
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	data := app.newTemplateData(w, r)
+
+	data.Users = users
+	app.render(w, http.StatusOK, "users.html", data)
+}
+
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		app.methodNotAllowed(w)
@@ -85,7 +106,32 @@ func (app *application) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Posts = posts
+	categories, err := app.categories.GetAll()
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	userID, err := app.getCurrentUser(r)
+	if err != nil && userID == 0 {
+		data.Categories = categories
+		data.IsAuthenticated = app.isAuthenticated(r)
+		app.render(w, http.StatusOK, "home.html", data)
+		return
+	} else if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	user, err := app.users.Get(userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	data.Categories = categories
+	data.User = user
+	data.IsAuthenticated = app.isAuthenticated(r)
 	app.render(w, http.StatusOK, "home.html", data)
+	return
 }
 
 func (app *application) postView(w http.ResponseWriter, r *http.Request) {
@@ -137,14 +183,20 @@ func (app *application) postView(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) postCreateForm(w http.ResponseWriter, r *http.Request) {
 
-	// Проверяем метод запроса
 	if r.Method == http.MethodGet {
+		categories, err := app.categories.GetAll()
+		if err != nil {
+			app.serverError(w, err)
+			return
+		}
+
 		data := app.newTemplateData(w, r)
 		data.Form = &postCreateForm{
 			Validator: validator.Validator{
 				FieldErrors: map[string]string{},
 			},
 		}
+		data.Categories = categories
 		app.render(w, http.StatusOK, "create.html", data)
 		return
 	}
@@ -205,13 +257,20 @@ func (app *application) postCreateForm(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Извлекаем данные из формы
+		var statusString string
+		if author.Role == "moderator" || author.Role == "admin" {
+			statusString = "approved"
+		} else {
+			statusString = "pending"
+		}
 		form := postCreateForm{
 			Title:     r.PostForm.Get("title"),
 			Content:   r.PostForm.Get("content"),
 			ImagePath: filePath,
 			Category:  r.PostForm.Get("Category"),
 			Author:    author.Name,
-			AuthorID:  author.ID,
+			AuthorID:  id,
+			Status:    statusString,
 		}
 		form.ImagePath = strings.TrimPrefix(form.ImagePath, "ui/static/upload/")
 
@@ -226,8 +285,18 @@ func (app *application) postCreateForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		app.infoLog.Printf("User Role: %s, Setting post status to: %s", author.Role, form.Status)
 		// Вставляем данные в базу
-		id, err = app.posts.Insert(form.Title, form.Content, form.ImagePath, form.Category, form.Author, form.AuthorID)
+		id, err = app.posts.Insert(
+			form.Title,
+			form.Content,
+			form.ImagePath,
+			form.Category,
+			form.Author,
+			form.Status,
+			form.AuthorID,
+		)
+
 		if err != nil {
 			app.serverError(w, err)
 			return
