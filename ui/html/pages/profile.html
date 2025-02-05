@@ -1,10 +1,36 @@
 {{define "title"}}User Profile{{end}}
 {{define "main"}}
 <main>
+    {{if eq .User.Role "moderator"}}
+    <div class="moderation-link">
+        <a href="/moderation">🚨 Moderation Panel</a>
+    </div>
+    <div class="moderation-link">
+        <a href="/reports">🚨 Reports</a>
+    </div>
+    {{end}}
+    {{if eq .User.Role "admin"}}
+    <div class="moderation-link">
+        <a href='/admin/categories'>Manage Categories</a>
+    </div>
+    <div class="moderation-link">
+        <a href='/admin/users'>Manage Users</a>
+    </div>
+    <div class="moderation-link">
+        <a href='/admin/reports'>Manage Reports</a>
+    </div>
+    {{end}}
+   
   <h1>User Profile</h1>
   {{with .User}}
   <p><strong>Name:</strong> {{.Name}}</p>
   <p><strong>Email:</strong> {{.Email}}</p>
+    <p><strong>Role:</strong> {{.Role}}</p>
+    {{if eq .Role "user"}}
+    <form action="/user/apply-moderator" method="POST">
+        <button type="submit">Apply to be Moderator</button>
+    </form>
+    {{end}}
   <p><strong>Password:</strong> **********</p>
   {{end}}
 <h2>Change Password</h2>
@@ -45,7 +71,6 @@
         <th>Title</th>
         <th>Created</th>
         <th>Modify</th>
-        
     </tr>
     {{range .Posts}}
     <tr>
@@ -60,6 +85,37 @@
     </ul>
   {{else}}
     <p>You have no published posts.</p>
+  {{end}}
+  <h2>Your Comments</h2>
+  {{if .Comments}}
+  <table>
+      <tr>
+          <th>ID</th>
+          <th>PostID</th>
+          <th>Content</th>
+          <th>Likes count</th>
+          <th>Dislikes count</th>
+          <th>Created</th>
+          <th>Modify</th>
+      </tr>
+      {{range .Comments}}
+      <tr>
+          <td>#{{.ID}}</td>
+          <td><a href='/post/view/{{.PostID}}'>{{.PostID}}</a></td>
+          <td>{{.Content}}</td>
+          <td>{{.Likes}}</td>
+          <td>{{.Dislikes}}</td>
+          <td>{{humanDate .Created}}</td>
+          <td> <form action="/comment/delete" method="post" style="display: inline;">
+            <input type="hidden" name="comment_id" value="{{.ID}}">
+            <input type="hidden" name="post_id" value="{{.PostID}}">
+            <button type="submit" style="color: red;">Delete</button>
+        </form></td>
+      </tr>
+      {{end}}
+  </table>
+  {{else}}
+      <p>You have no comments.</p>
   {{end}}
 </main>
 {{end}}

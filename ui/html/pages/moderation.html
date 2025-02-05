@@ -1,0 +1,45 @@
+{{define "title"}}User Profile{{end}}
+{{define "main"}}
+
+
+<main class="container">
+    <h2>Moderation Panel</h2>
+
+    {{if eq .User.Role "moderator"}}
+    <section class="pending-posts">
+        <h3>Posts Pending Approval</h3>
+        {{range .PendingPosts}}
+        <div class="post">
+            <h4>{{.Title}}</h4>
+            <p>{{.Content}}</p>
+            <p>Author: {{.Author}}</p>
+            <form action="/post/approve" method="POST">
+                <input type="hidden" name="post_id" value="{{.ID}}">
+                <button type="submit">Approve</button>
+            </form>
+            <a href="/post/delete/{{.ID}}" class="button danger">Delete</a>
+        </div>
+        {{else}}
+        <p>No posts pending approval</p>
+        {{end}}
+    </section>
+
+    <section class="user-management">
+        <h3>User Management</h3>
+        {{range .Users}}
+        <div class="user">
+            <p>{{.Name}} ({{.Email}}) - {{.Role}}</p>
+            <form action="/user/promote" method="POST">
+                <input type="hidden" name="user_id" value="{{.ID}}">
+                <button type="submit" {{if eq .Role "moderator"}}disabled{{end}}>Promote to Moderator</button>
+            </form>
+            <form action="/user/demote" method="POST">
+                <input type="hidden" name="user_id" value="{{.ID}}">
+                <button type="submit" {{if eq .Role "user"}}disabled{{end}}>Demote to User</button>
+            </form>
+        </div>
+        {{end}}
+    </section>
+    {{end}}
+</main>
+{{end}}

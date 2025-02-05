@@ -311,3 +311,115 @@ footer {
     color: #6A6C6F;
     text-align: center;
 }
+
+.notification-badge {
+    position: relative;
+    margin-right: 1rem;
+}
+
+.notification-link {
+    color: #333;
+    text-decoration: none;
+}
+
+.badge {
+    position: absolute;
+    top: -8px;
+    right: -12px;
+    background: #ff4444;
+    color: white;
+    border-radius: 50%;
+    padding: 3px 8px;
+    font-size: 0.8rem;
+}
+
+.notification-list {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 1rem;
+}
+
+.notification {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.notification.unread {
+    background-color: #f8f9fa;
+}
+
+.notification:last-child {
+    border-bottom: none;
+}
+.error-container {
+    max-width: 600px;
+    margin: 100px auto;
+    padding: 40px;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    text-align: center;
+}
+.error-code {
+    font-size: 48px;
+    color: #dc3545;
+    margin-bottom: 20px;
+}
+.error-message {
+    font-size: 24px;
+    margin-bottom: 30px;
+    color: #343a40;
+}
+.home-button {
+    background-color: #62CB31;
+    border-radius: 3px;
+    color: #FFFFFF;
+    padding: 18px 27px;
+    border: none;
+    display: inline-block;
+    margin-top: 18px;
+    font-weight: 700;
+    
+}
+.home-button:hover {
+    background-color: #4EB722;
+    color: #FFFFFF;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.pending-posts .post {
+    border: 1px solid #ccc;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 5px;
+}
+
+.user-management .user {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.button.danger {
+    background-color: #dc3545;
+    color: white;
+}
+.moderation-link {
+    margin: 1rem 0;
+    padding: 1rem;
+    background-color: #fff3cd;
+    border-radius: 5px;
+}
+
+.moderation-link a {
+    color: #856404;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.moderation-link a:hover {
+    text-decoration: underline;
+}
