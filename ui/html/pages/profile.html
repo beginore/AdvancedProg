@@ -1,0 +1,65 @@
+{{define "title"}}User Profile{{end}}
+{{define "main"}}
+<main>
+  <h1>User Profile</h1>
+  {{with .User}}
+  <p><strong>Name:</strong> {{.Name}}</p>
+  <p><strong>Email:</strong> {{.Email}}</p>
+  <p><strong>Password:</strong> **********</p>
+  {{end}}
+<h2>Change Password</h2>
+  <form method="POST" action="/user/profile/changepassword">
+    <label>Current Password:</label>
+{{with .Form}}
+    {{with .FieldErrors.currentPassword}}
+        <label class='error'>{{.}}</label>
+    {{end}}
+{{end}}
+<input type="password" id="currentPassword" name="currentPassword" required>
+
+    <label>New Password:</label>
+    {{with .Form}}
+    {{with .FieldErrors.newPassword}}
+        <label class='error'>{{.}}</label>
+    {{end}}
+{{end}}
+    <input type="password" id="newPassword" name="newPassword" required><br><br>
+
+    <label>Apply new Password:</label>
+    {{with .Form}}
+    {{with .FieldErrors.confirmPassword}}
+        <label class='error'>{{.}}</label>
+    {{end}}
+{{end}}
+    <input type="password" id="confirmPassword" name="confirmPassword" required><br><br>
+
+    <div>
+        <input type='submit' value='Change Password'>
+    </div>
+  </form>
+  <h2>Your Posts</h2>
+  {{if .Posts}}
+<table>
+    <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Created</th>
+        <th>Modify</th>
+        
+    </tr>
+    {{range .Posts}}
+    <tr>
+        <td>#{{.ID}}</td>
+        <td><a href='/post/view/{{.ID}}'>{{.Title}}</a></td>
+        <td>{{humanDate .Created}}</td>
+        <td> <a href="/post/edit/{{.ID}}">Edit</a></td>
+        <td><a href="/post/delete/{{.ID}}">Delete</a></td>
+    </tr>
+    {{end}}
+    </table>
+    </ul>
+  {{else}}
+    <p>You have no published posts.</p>
+  {{end}}
+</main>
+{{end}}

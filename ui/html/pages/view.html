@@ -1,0 +1,60 @@
+{{define "title"}}Post #{{.Post.ID}}{{end}}
+
+{{define "main"}}
+    {{with .Post}}
+    <div class='snippet' style="width: 80%; margin: 0 auto; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+        <div class='metadata' style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>{{.Title}}</strong>
+            <span>#{{.ID}}</span>
+        </div>
+        <pre style="white-space: pre-wrap; word-wrap: break-word;"><code>{{.Content}}</code></pre>
+        {{if .ImagePath}}
+        <div class='image'>
+            <img src="/static/upload/{{.ImagePath}}" alt="Image" style="max-width: 80%; height: auto; display: block; margin: 10px auto; border: 1px solid #ddd; border-radius: 5px;">
+        </div>
+        {{end}}
+        <div class='metadata'>
+            <strong>Category: {{.Category}}</strong>
+        </div>
+        <div class='metadata'>
+            <time>Created: {{humanDate .Created}}</time>
+        </div>
+    </div>
+    {{end}}
+
+    <h3>Comments</h3>
+    
+    {{if .Comments}}
+        <ul>
+            {{range .Comments}}
+            <li style="padding: 10px; border-bottom: 1px solid #ddd;">
+                <strong>{{.Author}}</strong> <em>{{humanDate .Created}}</em>
+                <p>{{.Content}}</p>
+                
+                <!-- Edit and Delete buttons -->
+                <div style="margin-top: 10px;">
+                    {{if and $.User (eq .Author $.User.Name)}}
+                    <form action="/comments/delete" method="post" style="display: inline;">
+                        <input type="hidden" name="comment_id" value="{{.ID}}">
+                        <input type="hidden" name="post_id" value="{{.PostID}}">
+                        <button type="submit" style="color: red;">Delete</button>
+                    </form>
+                    {{end}}
+                </div>
+            </li>
+            {{end}}
+        </ul>
+    {{else}}
+        <p>No comments yet. Be the first to comment!</p>
+    {{end}}
+    {{if .IsAuthenticated}}
+    <h3>Add a Comment</h3>
+    <form action="/comments/add" method="post">
+        <input type="hidden" name="post_id" value="{{.Post.ID}}">
+        <input type="hidden" name="author" value="{{.User.Name}}">
+        <label for="content">Comment:</label><br>
+        <textarea id="content" name="content" rows="4" required></textarea><br><br>
+        <button type="submit">Add Comment</button>
+    </form>
+    {{end}}
+{{end}}
