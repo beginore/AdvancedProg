@@ -209,3 +209,5 @@ func (m *PostModel) ApprovePost(postID int) error {
 	_, err := m.DB.Exec("UPDATE posts SET status = 'approved' WHERE id = ?", postID)
 	return err
 }
+
+//comment
