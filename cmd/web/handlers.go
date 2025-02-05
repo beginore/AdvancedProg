@@ -706,3 +706,622 @@ func (app *application) EditPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+func (app *application) DeletePost(w http.ResponseWriter, r *http.Request) {
+	// Получаем ID поста из URL
+	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/post/delete/"))
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	// Получаем текущего пользователя
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	// Проверяем права доступа
+	post, err := app.posts.Get(id)
+	if err != nil {
+		app.notFound(w)
+		return
+	}
+
+	user, err := app.users.Get(userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	// Разрешаем удаление если:
+	// 1. Пользователь - автор поста
+	// 2. Пользователь модератор или админ
+	if post.AuthorID != userID && user.Role != "moderator" && user.Role != "admin" {
+		app.clientError(w, http.StatusForbidden)
+		return
+	}
+
+	// Логика удаления поста
+	path, err := app.posts.DeletePost(id)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	// Удаление файла если есть
+	if path != "" {
+		if err := os.Remove("./ui/static/upload/" + path); err != nil {
+			app.errorLog.Println("Failed to delete image:", err)
+		}
+	}
+
+	app.flash(w, r, "Post deleted successfully!")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+func (app *application) getComments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	postIDStr := r.URL.Query().Get("post_id")
+	if postIDStr == "" {
+		http.Error(w, "post_id is required", http.StatusBadRequest)
+		return
+	}
+
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		http.Error(w, "invalid post_id", http.StatusBadRequest)
+		return
+	}
+
+	comments, err := app.comments.GetByPostID(postID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	data := app.newTemplateData(w, r)
+	data.Comments = comments
+	app.render(w, http.StatusOK, "comments.html", data)
+}
+func (app *application) addComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+	idParam := r.FormValue("post_id")
+	var id int
+	var err error
+
+	if idParam != "" {
+		id, err = strconv.Atoi(idParam)
+	} else {
+		path := strings.TrimPrefix(r.URL.Path, "/post/view/")
+		id, err = strconv.Atoi(path)
+	}
+	content := r.FormValue("content")
+	// author := r.FormValue("author")
+	user_id, err := app.getCurrentUser(r)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	user, err := app.users.Get(user_id)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	comment := &models.Comment{
+		PostID:  id,
+		UserID:  user_id,
+		Author:  user.Name,
+		Content: content,
+		Created: time.Now(),
+	}
+
+	// Сохраняем комментарий в базе данных
+	err = app.comments.Insert(comment)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	post, err := app.posts.Get(comment.PostID)
+	if err == nil && post.AuthorID != comment.UserID {
+		// Создаем уведомление для автора поста
+		err = app.notificationsModel.Insert(
+			post.AuthorID,
+			comment.UserID,
+			"comment",
+			post.ID,
+			comment.ID,
+		)
+		if err != nil {
+			app.errorLog.Println("Failed to create notification:", err)
+		}
+	}
+	// Перенаправляем на страницу поста с комментариями
+	app.flash(w, r, "Comment added successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", id), http.StatusSeeOther)
+	return
+}
+
+func (app *application) deleteComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	commentIDStr := r.Form.Get("comment_id")
+	postIDStr := r.Form.Get("post_id")
+
+	if commentIDStr == "" || postIDStr == "" {
+		app.errorLog.Print("DELETE COMMENT: comment_id and post_id are required")
+		app.errorLog.Println(w, http.StatusBadRequest)
+		return
+	}
+
+	commentID, err := strconv.Atoi(commentIDStr)
+	if err != nil {
+		app.errorLog.Print("DELETE COMMENT: invalid comment_id")
+		app.errorLog.Println(w, http.StatusBadRequest)
+		return
+	}
+
+	// Удаляем комментарий из базы
+	err = app.comments.Delete(commentID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	// Перенаправляем на страницу поста
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		app.errorLog.Print("DELETE COMMENT: invalid post_id")
+		app.errorLog.Println(w, http.StatusBadRequest)
+		return
+	}
+	app.flash(w, r, "Comment deleted successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", postID), http.StatusSeeOther)
+}
+func (app *application) likePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	postIDStr := r.FormValue("post_id")
+	if postIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.LikePost(postID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	post, err := app.posts.Get(postID)
+	if err == nil && post.AuthorID != userID {
+		err = app.notificationsModel.Insert(
+			post.AuthorID,
+			userID,
+			"post_like",
+			postID,
+			0,
+		)
+		if err != nil {
+			app.errorLog.Println("Failed to create notification:", err)
+		}
+	}
+
+	app.flash(w, r, "Post liked successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", postID), http.StatusSeeOther)
+}
+
+func (app *application) dislikePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	postIDStr := r.FormValue("post_id")
+	if postIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.DislikePost(postID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	post, err := app.posts.Get(postID)
+	if err == nil && post.AuthorID != userID {
+		err = app.notificationsModel.Insert(
+			post.AuthorID,
+			userID,
+			"post_dislike",
+			postID,
+			0,
+		)
+		if err != nil {
+			app.errorLog.Println("Failed to create notification:", err)
+		}
+	}
+	app.flash(w, r, "Post disliked successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", postID), http.StatusSeeOther)
+}
+
+func (app *application) removeLikePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	postIDStr := r.FormValue("post_id")
+	if postIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.RemoveLikePost(postID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	app.flash(w, r, "Like removed successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", postID), http.StatusSeeOther)
+}
+
+func (app *application) removeDislikePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	postIDStr := r.FormValue("post_id")
+	if postIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.RemoveDislikePost(postID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	app.flash(w, r, "Dislike removed successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", postID), http.StatusSeeOther)
+}
+func (app *application) likeComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	commentIDStr := r.FormValue("comment_id")
+	if commentIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	commentID, err := strconv.Atoi(commentIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.LikeComment(commentID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	comment, err := app.comments.GetByID(commentID)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+	post, err := app.posts.Get(comment.PostID)
+	if err == nil && post.AuthorID != comment.UserID {
+		// Создаем уведомление для автора поста
+		err = app.notificationsModel.Insert(
+			post.AuthorID,
+			comment.UserID,
+			"comment_like",
+			post.ID,
+			comment.ID,
+		)
+		if err != nil {
+			app.errorLog.Println("Failed to create notification:", err)
+		}
+	}
+	app.flash(w, r, "Comment liked successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", comment.PostID), http.StatusSeeOther)
+}
+
+func (app *application) dislikeComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	commentIDStr := r.FormValue("comment_id")
+	if commentIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	commentID, err := strconv.Atoi(commentIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.DislikeComment(commentID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	comment, err := app.comments.GetByID(commentID)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+	post, err := app.posts.Get(comment.PostID)
+	if err == nil && post.AuthorID != comment.UserID {
+		// Создаем уведомление для автора поста
+		err = app.notificationsModel.Insert(
+			post.AuthorID,
+			comment.UserID,
+			"comment_dislike",
+			post.ID,
+			comment.ID,
+		)
+		if err != nil {
+			app.errorLog.Println("Failed to create notification:", err)
+		}
+	}
+	app.flash(w, r, "Comment disliked successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", comment.PostID), http.StatusSeeOther)
+}
+
+func (app *application) removeLikeComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	commentIDStr := r.FormValue("comment_id")
+	if commentIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	commentID, err := strconv.Atoi(commentIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.RemoveLikeComment(commentID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	comment, err := app.comments.GetByID(commentID)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+	app.flash(w, r, "Like removed successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", comment.PostID), http.StatusSeeOther)
+}
+
+func (app *application) removeDislikeComment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		app.methodNotAllowed(w)
+		return
+	}
+
+	commentIDStr := r.FormValue("comment_id")
+	if commentIDStr == "" {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	commentID, err := strconv.Atoi(commentIDStr)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.clientError(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = app.reactions.RemoveDislikeComment(commentID, userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+	comment, err := app.comments.GetByID(commentID)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+	app.flash(w, r, "Dislike removed successfully!")
+	http.Redirect(w, r, fmt.Sprintf("/post/view/%d", comment.PostID), http.StatusSeeOther)
+}
+func (app *application) notifications(w http.ResponseWriter, r *http.Request) {
+
+	if !app.isAuthenticated(r) {
+		http.Redirect(w, r, "/user/login", http.StatusSeeOther)
+		return
+	}
+
+	userID, err := app.getCurrentUser(r)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	// Получаем уведомления
+	notifications, err := app.notificationsModel.GetAll(userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	// Помечаем как прочитанные
+	err = app.notificationsModel.MarkAllAsRead(userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	data := app.newTemplateData(w, r)
+	data.Notifications = notifications
+	app.render(w, http.StatusOK, "notifications.html", data)
+}
+func (app *application) manageCategories(w http.ResponseWriter, r *http.Request) {
+	// Проверка прав администратора
+	userID, err := app.getCurrentUser(r)
+	if err != nil || !app.isAdmin(userID) {
+		app.clientError(w, http.StatusForbidden)
+		return
+	}
+
+	categories, err := app.categories.GetAll()
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	data := app.newTemplateData(w, r)
+	data.Categories = categories
+	app.render(w, http.StatusOK, "categories.html", data)
+}
+
+func (app *application) addCategory(w http.ResponseWriter, r *http.Request) {
+	if !app.isAdminRequest(r) {
+		app.clientError(w, http.StatusForbidden)
+		return
+	}
+
+	name := r.FormValue("name")
+	if err := app.categories.Insert(name); err != nil {
+		if errors.Is(err, models.ErrDuplicateCategory) {
+			app.flash(w, r, "Category already exists!")
+		} else {
+			app.serverError(w, err)
+		}
+	}
+	http.Redirect(w, r, "/admin/categories", http.StatusSeeOther)
+}
+
+func (app *application) updateCategory(w http.ResponseWriter, r *http.Request) {
+	if !app.isAdminRequest(r) {
+		app.clientError(w, http.StatusForbidden)
+		return
+	}
+
+	id, _ := strconv.Atoi(r.FormValue("id"))
+	newName := r.FormValue("name")
+	if err := app.categories.Update(id, newName); err != nil {
+		app.serverError(w, err)
+	}
+	http.Redirect(w, r, "/admin/categories", http.StatusSeeOther)
+}
+
+func (app *application) deleteCategory(w http.ResponseWriter, r *http.Request) {
+	if !app.isAdminRequest(r) {
+		app.clientError(w, http.StatusForbidden)
+		return
+	}
+
+	id, _ := strconv.Atoi(r.FormValue("id"))
+	if err := app.categories.Delete(id); err != nil {
+		app.serverError(w, err)
+	}
+	http.Redirect(w, r, "/admin/categories", http.StatusSeeOther)
+}
