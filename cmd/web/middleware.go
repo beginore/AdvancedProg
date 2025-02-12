@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"golang.org/x/time/rate"
 	"net/http"
+	"sync"
+	"time"
 )
 
 func secureHeaders(next http.Handler) http.Handler {
@@ -74,6 +77,62 @@ func (app *application) requireRole(role string, next http.Handler) http.Handler
 		user, err := app.users.Get(userID)
 		if err != nil || user.Role != role {
 			app.clientError(w, http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Структура для хранения лимитеров по IP
+type RateLimiter struct {
+	app      *application
+	visitors map[string]*rate.Limiter
+	mu       sync.Mutex
+	limit    rate.Limit
+	burst    int
+}
+
+// Создаем новый RateLimiter
+func NewRateLimiter(app *application, limit rate.Limit, burst int) *RateLimiter {
+	return &RateLimiter{
+		app:      app, // Передаем приложение
+		visitors: make(map[string]*rate.Limiter),
+		limit:    limit,
+		burst:    burst,
+	}
+}
+
+// Получение (или создание) лимитера для IP
+func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if limiter, exists := rl.visitors[ip]; exists {
+		return limiter
+	}
+
+	limiter := rate.NewLimiter(rl.limit, rl.burst)
+	rl.visitors[ip] = limiter
+
+	// Удаляем IP из списка через 10 минут бездействия
+	go func() {
+		time.Sleep(10 * time.Minute)
+		rl.mu.Lock()
+		delete(rl.visitors, ip)
+		rl.mu.Unlock()
+	}()
+
+	return limiter
+}
+
+func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		limiter := rl.getLimiter(ip)
+
+		if !limiter.Allow() {
+			rl.app.clientError(w, http.StatusTooManyRequests) // Используем app из структуры
 			return
 		}
 

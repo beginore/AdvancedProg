@@ -67,11 +67,14 @@ func main() {
 		reports:            &models.ReportModel{DB: db}, // Добавляем поле reports корректно
 	}
 
+	rateLimiter := NewRateLimiter(&app, 3, 5)
+	limitedRouter := rateLimiter.Limit(app.routes())
+
 	// Инициализация структуры сервера для использования errorLog и роутера
 	srv := &http.Server{
 		Addr:         *addr,
 		ErrorLog:     errorLog,
-		Handler:      app.routes(),
+		Handler:      limitedRouter,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
