@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"database/sql"
 	"flag"
 	"forum/internal/models"
@@ -68,24 +67,19 @@ func main() {
 		reports:            &models.ReportModel{DB: db}, // Добавляем поле reports корректно
 	}
 
-	tlsConfig := &tls.Config{
-		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
-	}
-
 	// Инициализация структуры сервера для использования errorLog и роутера
 	srv := &http.Server{
 		Addr:         *addr,
 		ErrorLog:     errorLog,
 		Handler:      app.routes(),
-		TLSConfig:    tlsConfig,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
 	// Запуск сервера с поддержкой HTTPS
-	infoLog.Printf("Starting server on https://localhost%s", *addr)
-	err = srv.ListenAndServeTLS("./tls/cert.pem", "./tls/key.pem")
+	infoLog.Printf("Starting server on http://localhost%s", *addr)
+	err = srv.ListenAndServe()
 	errorLog.Fatal(err)
 }
 

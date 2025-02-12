@@ -88,7 +88,7 @@ func (app *application) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+		app.clientError(w, http.StatusNotFound)
 		return
 	}
 	selectedCategory := r.URL.Query().Get("Category")
@@ -424,21 +424,21 @@ func (app *application) userLogin(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) userLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		app.clientError(w, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Renew the session token (invalidate the old session and create a new one).
 	err := app.renewSessionToken(w, r)
 	if err != nil {
-		http.Error(w, "Failed to renew session token", http.StatusUnauthorized)
+		app.clientError(w, http.StatusUnauthorized)
 		return
 	}
 
 	// Remove the authenticated user ID from the session data.
 	cookie, err := r.Cookie("session_id")
 	if err != nil {
-		http.Error(w, "No session found", http.StatusUnauthorized)
+		app.clientError(w, http.StatusUnauthorized)
 		return
 	}
 
@@ -767,13 +767,13 @@ func (app *application) getComments(w http.ResponseWriter, r *http.Request) {
 
 	postIDStr := r.URL.Query().Get("post_id")
 	if postIDStr == "" {
-		http.Error(w, "post_id is required", http.StatusBadRequest)
+		app.serverError(w, fmt.Errorf("post_id is required"))
 		return
 	}
 
 	postID, err := strconv.Atoi(postIDStr)
 	if err != nil {
-		http.Error(w, "invalid post_id", http.StatusBadRequest)
+		app.serverError(w, err)
 		return
 	}
 

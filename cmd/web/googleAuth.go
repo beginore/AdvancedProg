@@ -11,7 +11,7 @@ import (
 var oauth2Config = &oauth2.Config{
 	ClientID:     "274551296930-b4mtjr1b9260o3pnsr1jc6mp2c9mvscf.apps.googleusercontent.com", // Замените на ваш Google Client ID
 	ClientSecret: "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",                                      // Замените на ваш Google Client Secret
-	RedirectURL:  "https://localhost:4000/user/googlecallback",
+	RedirectURL:  "http://localhost:4000/user/googlecallback",
 	Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"},
 	Endpoint:     google.Endpoint,
 }
@@ -67,10 +67,10 @@ func (app *application) googleCallbackHandler(w http.ResponseWriter, r *http.Req
 }
 
 var githubOauth2Config = &oauth2.Config{
-	ClientID:     "Ov23li5UZErJbCnv7tYX",                       // Замените на ваш GitHub Client ID
-	ClientSecret: "e5aa8791ae6e3cb1989f3ccc4ab12223730acd48",   // Замените на ваш GitHub Client Secret
-	RedirectURL:  "https://localhost:4000/user/githubcallback", // URL для обработки callback от GitHub
-	Scopes:       []string{"read:user", "user:email"},          // Разрешения, запрашиваемые у пользователя
+	ClientID:     "Ov23li5UZErJbCnv7tYX",                      // Замените на ваш GitHub Client ID
+	ClientSecret: "e5aa8791ae6e3cb1989f3ccc4ab12223730acd48",  // Замените на ваш GitHub Client Secret
+	RedirectURL:  "http://localhost:4000/user/githubcallback", // URL для обработки callback от GitHub
+	Scopes:       []string{"read:user", "user:email"},         // Разрешения, запрашиваемые у пользователя
 	Endpoint:     github.Endpoint,
 }
 
