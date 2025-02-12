@@ -296,7 +296,7 @@ func (app *application) postCreateForm(w http.ResponseWriter, r *http.Request) {
 			form.Status,
 			form.AuthorID,
 		)
-
+		fmt.Println(id, err)
 		if err != nil {
 			app.serverError(w, err)
 			return

@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"strings"
+	"github.com/lib/pq"
+	_ "strings"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -35,17 +35,13 @@ func (m *UserModel) Insert(name, email, password string) error {
 
 	stmt := `INSERT INTO users
     (name, email, hashed_password, created, role) 
-	         VALUES (?, ?, ?, DATETIME('now', 'localtime'), 'user')`
+    VALUES ($1, $2, $3, NOW(), 'user')`
 
 	_, err = m.DB.Exec(stmt, name, email, string(hashedPassword))
 	if err != nil {
-		var sqliteError *sqlite3.Error
-		// Проверяем, если ошибка связана с дублированием email
-		if errors.As(err, &sqliteError) {
-			// SQLite может возвращать ошибки, связанные с нарушением уникальности
-			// В этом примере мы ищем ошибку по тексту
-			if strings.Contains(sqliteError.Error(), "UNIQUE constraint failed: users"+
-				".email") {
+		if err, ok := err.(*pq.Error); ok {
+			// Check for unique constraint violation
+			if err.Code == "23505" { // Unique violation error code in PostgreSQL
 				return ErrDuplicateEmail
 			}
 		}
@@ -55,40 +51,35 @@ func (m *UserModel) Insert(name, email, password string) error {
 }
 
 func (m *UserModel) Authenticate(email, password string) (int, error) {
-	// Retrieve the id and hashed password associated with the given email. If
-	// no matching email exists we return the ErrInvalidCredentials error.
 	var id int
 	var hashedPassword []byte
 
-	stmt := "SELECT id, hashed_password FROM users" +
-		" WHERE email = ?"
+	stmt := "SELECT id, hashed_password FROM users WHERE email = $1"
 
 	err := m.DB.QueryRow(stmt, email).Scan(&id, &hashedPassword)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrInvalidCredentials
-		} else {
-			return 0, err
 		}
+		return 0, err
 	}
 
-	// Check whether the hashed password and plain-text password provided match.
-	// If they don't, we return the ErrInvalidCredentials error.
 	err = bcrypt.CompareHashAndPassword(hashedPassword, []byte(password))
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return 0, ErrInvalidCredentials
-		} else {
-			return 0, err
 		}
+		return 0, err
 	}
 
-	// Otherwise, the password is correct. Return the user ID.
 	return id, nil
 }
 
 func (m *UserModel) Exists(id int) (bool, error) {
-	return false, nil
+	var exists bool
+	stmt := "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)"
+	err := m.DB.QueryRow(stmt, id).Scan(&exists)
+	return exists, err
 }
 
 func hashPassword(password string, salt string) (string, error) {
@@ -98,7 +89,7 @@ func hashPassword(password string, salt string) (string, error) {
 }
 
 func (m *UserModel) Get(id int) (*User, error) {
-	stmt := `SELECT id, name, email, hashed_password, created, role FROM users WHERE id = ?`
+	stmt := `SELECT id, name, email, hashed_password, created, role FROM users WHERE id = $1`
 	row := m.DB.QueryRow(stmt, id)
 
 	u := &User{}
@@ -112,9 +103,9 @@ func (m *UserModel) Get(id int) (*User, error) {
 
 	return u, nil
 }
+
 func (m *UserModel) GetAllUsers() ([]*User, error) {
-	stmt := `SELECT id, name, email, role FROM users
-`
+	stmt := `SELECT id, name, email, role FROM users`
 	rows, err := m.DB.Query(stmt)
 	if err != nil {
 		return nil, err
@@ -139,35 +130,28 @@ func (m *UserModel) GetAllUsers() ([]*User, error) {
 }
 
 func (m *UserModel) UpdatePassword(hashedPassword string, id int) error {
-	stmt := "UPDATE users" +
-		" SET hashed_password = ? WHERE id = ?"
+	stmt := "UPDATE users SET hashed_password = $1 WHERE id = $2"
 	_, err := m.DB.Exec(stmt, hashedPassword, id)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
-func (m *UserModel) GetOrCreateOAuthUser(email, name, provider, provider_id string) (int, error) {
+func (m *UserModel) GetOrCreateOAuthUser(email, name, provider, providerID string) (int, error) {
 	var userID int
 
-	// Проверяем, существует ли пользователь с данным oauth_id и провайдером
 	err := m.DB.QueryRow(`
         SELECT id FROM users
-                  
-        WHERE provider = ? AND provider_id = ?
-    `, provider, provider_id).Scan(&userID)
+        WHERE provider = $1 AND provider_id = $2
+    `, provider, providerID).Scan(&userID)
 
 	if err == nil {
-		return userID, nil // Пользователь существует
+		return userID, nil // User exists
 	}
 
-	// Если пользователя нет, создаем нового
 	result, err := m.DB.Exec(`
         INSERT INTO users
             (name, email, provider, provider_id, role, created, hashed_password) 
-        VALUES (?, ?, ?, ?, 'user', DATETIME('now'), 'google')
-    `, name, email, provider, provider_id)
+        VALUES ($1, $2, $3, $4, 'user', NOW(), 'google')
+    `, name, email, provider, providerID)
 
 	if err != nil {
 		return 0, err
@@ -178,19 +162,17 @@ func (m *UserModel) GetOrCreateOAuthUser(email, name, provider, provider_id stri
 }
 
 func (m *UserModel) PromoteUser(userID int) error {
-	_, err := m.DB.Exec("UPDATE users"+
-		" SET role = 'moderator' WHERE id = ?", userID)
+	_, err := m.DB.Exec("UPDATE users SET role = 'moderator' WHERE id = $1", userID)
 	return err
 }
 
 func (m *UserModel) DemoteUser(userID int) error {
-	_, err := m.DB.Exec("UPDATE users"+
-		" SET role = 'user' WHERE id = ?", userID)
+	_, err := m.DB.Exec("UPDATE users SET role = 'user' WHERE id = $1", userID)
 	return err
 }
 
 func (m *UserModel) ApplyForModerator(userID int) error {
-	stmt := `UPDATE users SET role = "pending_moderator" WHERE id = ? AND role = "user"`
+	stmt := `UPDATE users SET role = 'pending_moderator' WHERE id = $1 AND role = 'user'`
 	_, err := m.DB.Exec(stmt, userID)
 	return err
 }

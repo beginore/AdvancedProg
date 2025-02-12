@@ -1,4 +1,3 @@
-// models/reports.go
 package models
 
 import (
@@ -6,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	_ "github.com/lib/pq" // Import PostgreSQL driver
 )
 
 type Report struct {
@@ -24,12 +25,12 @@ type ReportModel struct {
 }
 
 func (m *ReportModel) Get(id int) (*Report, error) {
-	stmt := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer FROM reports`
+	stmt := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer, solved FROM reports WHERE id = $1`
 
 	row := m.DB.QueryRow(stmt, id)
 
 	r := &Report{}
-	err := row.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer)
+	err := row.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer, &r.Solved)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNoRecord
@@ -41,7 +42,7 @@ func (m *ReportModel) Get(id int) (*Report, error) {
 }
 
 func (m *ReportModel) Create(postID, reporterID int, reason string) error {
-	query := `INSERT INTO reports (post_id, reporter_id, reason) VALUES (?, ?, ?)`
+	query := `INSERT INTO reports (post_id, reporter_id, reason, created_at) VALUES ($1, $2, $3, NOW())`
 	_, err := m.DB.Exec(query, postID, reporterID, reason)
 	if err != nil {
 		return err
@@ -51,7 +52,7 @@ func (m *ReportModel) Create(postID, reporterID int, reason string) error {
 
 func (m *ReportModel) Answer(reportID, adminID int, answer string) error {
 	var exists bool
-	err := m.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM reports WHERE id = ?)", reportID).Scan(&exists)
+	err := m.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM reports WHERE id = $1)", reportID).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func (m *ReportModel) Answer(reportID, adminID int, answer string) error {
 		return fmt.Errorf("ошибка: отчёт с ID %d не найден", reportID)
 	}
 
-	query := `UPDATE reports SET admin_id = ?, answer = ?, solved = 1 WHERE id = ?`
+	query := `UPDATE reports SET admin_id = $1, answer = $2, solved = 1 WHERE id = $3`
 	_, err = m.DB.Exec(query, adminID, answer, reportID)
 	if err != nil {
 		return err
@@ -69,7 +70,7 @@ func (m *ReportModel) Answer(reportID, adminID int, answer string) error {
 }
 
 func (m *ReportModel) GetUnsolved() ([]*Report, error) {
-	query := `SELECT * FROM reports WHERE solved = 0`
+	query := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer, solved FROM reports WHERE solved = 0`
 
 	rows, err := m.DB.Query(query)
 	if err != nil {
@@ -80,7 +81,7 @@ func (m *ReportModel) GetUnsolved() ([]*Report, error) {
 	var reports []*Report
 	for rows.Next() {
 		r := &Report{}
-		err = rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.Answer, &r.AdminID, &r.Solved)
+		err = rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer, &r.Solved)
 		if err != nil {
 			return nil, err
 		}
@@ -92,36 +93,8 @@ func (m *ReportModel) GetUnsolved() ([]*Report, error) {
 	return reports, nil
 }
 
-func (m *ReportModel) GetSolved() error {
-	query := `SELECT * FROM reports WHERE solved = 1`
-	_, err := m.DB.Exec(query)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-//func (m *ReportModel) GetReported() ([]*Report, error) {
-//	query := `SELECT * FROM reports WHERE solved = 1`
-//	rows, err := m.DB.Query(query)
-//	if err != nil {
-//		return nil, err
-//	}
-//	defer rows.Close()
-//	var reports []*Report
-//	for rows.Next() {
-//		r := &Report{}
-//		err := rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt)
-//		if err != nil {
-//			return nil, err
-//		}
-//		reports = append(reports, r)
-//	}
-//	return reports, nil
-//}
-
-func (m *ReportModel) GetAll() ([]*Report, error) {
-	query := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer FROM reports`
+func (m *ReportModel) GetSolved() ([]*Report, error) {
+	query := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer, solved FROM reports WHERE solved = 1`
 	rows, err := m.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -131,7 +104,27 @@ func (m *ReportModel) GetAll() ([]*Report, error) {
 	var reports []*Report
 	for rows.Next() {
 		r := &Report{}
-		err := rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer)
+		err := rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer, &r.Solved)
+		if err != nil {
+			return nil, err
+		}
+		reports = append(reports, r)
+	}
+	return reports, nil
+}
+
+func (m *ReportModel) GetAll() ([]*Report, error) {
+	query := `SELECT id, post_id, reporter_id, reason, created_at, admin_id, answer, solved FROM reports`
+	rows, err := m.DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reports []*Report
+	for rows.Next() {
+		r := &Report{}
+		err := rows.Scan(&r.ID, &r.PostID, &r.ReporterID, &r.Reason, &r.CreatedAt, &r.AdminID, &r.Answer, &r.Solved)
 		if err != nil {
 			return nil, err
 		}

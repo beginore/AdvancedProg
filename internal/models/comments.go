@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Comment represents a comment in the database
 type Comment struct {
 	ID       int
 	PostID   int
@@ -15,13 +16,20 @@ type Comment struct {
 	Author   string
 	Created  time.Time
 }
+
+// CommentModel provides methods for interacting with the comments table
 type CommentModel struct {
 	DB *sql.DB
 }
 
+// GetByPostID retrieves comments for a specific post
 func (m *CommentModel) GetByPostID(postID int) ([]*Comment, error) {
-	stmt := `SELECT id, post_id, content, likes, dislikes, user_id, author, created FROM comments WHERE post_id = ? ORDER BY created ASC`
-
+	stmt := `
+        SELECT id, post_id, content, likes, dislikes, user_id, author, created 
+        FROM comments 
+        WHERE post_id = $1 
+        ORDER BY created ASC
+    `
 	rows, err := m.DB.Query(stmt, postID)
 	if err != nil {
 		return nil, err
@@ -45,60 +53,67 @@ func (m *CommentModel) GetByPostID(postID int) ([]*Comment, error) {
 	return comments, nil
 }
 
+// Insert adds a new comment to the database
 func (m *CommentModel) Insert(comment *Comment) error {
-	stmt := `INSERT INTO comments (post_id, content, user_id, author, created) VALUES (?, ?, ?, ?,  DATETIME('now', 'localtime'))`
-
-	result, err := m.DB.Exec(stmt, comment.PostID, comment.Content, comment.UserID, comment.Author)
+	stmt := `
+        INSERT INTO comments (post_id, content, likes, dislikes, user_id, author, created) 
+        VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
+        RETURNING id
+    `
+	var id int
+	err := m.DB.QueryRow(stmt, comment.PostID, comment.Content, comment.Likes, comment.Dislikes, comment.UserID, comment.Author).Scan(&id)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	comment.ID = int(id)
-
+	comment.ID = id
 	return nil
 }
-func (m *CommentModel) Delete(commentID int) error {
-	stmt := `DELETE FROM comments WHERE id = ?`
 
+// Delete removes a comment by ID
+func (m *CommentModel) Delete(commentID int) error {
+	stmt := `DELETE FROM comments WHERE id = $1`
 	_, err := m.DB.Exec(stmt, commentID)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
-func (m *CommentModel) Update(commentID int, content string) error {
-	stmt := `UPDATE comments SET content = ?, created = UTC_TIMESTAMP() WHERE id = ?`
 
+// Update modifies an existing comment
+func (m *CommentModel) Update(commentID int, content string) error {
+	stmt := `UPDATE comments SET content = $1, created = NOW() WHERE id = $2`
 	_, err := m.DB.Exec(stmt, content, commentID)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
+
+// GetByID retrieves a comment by ID
 func (m *CommentModel) GetByID(commentID int) (*Comment, error) {
-	stmt := `SELECT id, post_id, content, likes, dislikes, user_id, author,  created FROM comments WHERE id = ?`
-
+	stmt := `
+        SELECT id, post_id, content, likes, dislikes, user_id, author, created 
+        FROM comments 
+        WHERE id = $1
+    `
 	row := m.DB.QueryRow(stmt, commentID)
-
 	comment := &Comment{}
 	err := row.Scan(&comment.ID, &comment.PostID, &comment.Content, &comment.Likes, &comment.Dislikes, &comment.UserID, &comment.Author, &comment.Created)
 	if err != nil {
 		return nil, err
 	}
-
 	return comment, nil
 }
-func (m *CommentModel) UserComments(userId int) ([]*Comment, error) {
-	stmt := `SELECT id, post_id, content, likes, dislikes, user_id, author,  created FROM comments WHERE user_id = ? ORDER BY created ASC`
 
-	rows, err := m.DB.Query(stmt, userId)
+// UserComments retrieves comments made by a specific user
+func (m *CommentModel) UserComments(userID int) ([]*Comment, error) {
+	stmt := `
+        SELECT id, post_id, content, likes, dislikes, user_id, author, created 
+        FROM comments 
+        WHERE user_id = $1 
+        ORDER BY created ASC
+    `
+	rows, err := m.DB.Query(stmt, userID)
 	if err != nil {
 		return nil, err
 	}
