@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"flag"
+	"fmt"
 	"forum/internal/models"
 	"html/template"
 	"log"
@@ -48,6 +49,7 @@ func main() {
 
 	// Инициализация кэша шаблонов
 	templateCache, err := newTemplateCache()
+	fmt.Println(templateCache)
 	if err != nil {
 		errorLog.Fatal(err)
 	}

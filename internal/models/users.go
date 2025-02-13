@@ -214,3 +214,19 @@ func (m *UserModel) GetPendingModerators() ([]*User, error) {
 
 	return users, nil
 }
+
+func (m *UserModel) GetByEmail(email string) (*User, error) {
+	stmt := `SELECT id, name, email, hashed_password, created, role 
+             FROM users WHERE email = ?`
+	row := m.DB.QueryRow(stmt, email)
+
+	u := &User{}
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.HashedPassword, &u.Created, &u.Role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNoRecord
+		}
+		return nil, err
+	}
+	return u, nil
+}

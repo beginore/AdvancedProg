@@ -6,6 +6,7 @@ import (
 	"golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
 	"net/http"
+	"strconv"
 )
 
 var oauth2Config = &oauth2.Config{
@@ -142,7 +143,7 @@ func (app *application) githubCallbackHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	userID, err := app.users.GetOrCreateOAuthUser(userData.Email, userData.Name, "github", string(userData.ID))
+	userID, err := app.users.GetOrCreateOAuthUser(userData.Email, userData.Name, "github", strconv.FormatInt(userData.ID, 10))
 	if err != nil {
 		app.serverError(w, err)
 		return
