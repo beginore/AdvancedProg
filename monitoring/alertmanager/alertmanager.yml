@@ -1,0 +1,16 @@
+global:
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'cterekbaev@gmail.com'
+  smtp_auth_username: 'cterekbaev@gmail.com'
+  smtp_auth_password: 'zfip wqvo tplj dfgl'
+  smtp_require_tls: true
+
+route:
+  receiver: 'gmail-alerts'
+
+receivers:
+  - name: 'gmail-alerts'
+    email_configs:
+      - to: 'cterekbaev@gmail.com'
+        send_resolved: true
+
